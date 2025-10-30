@@ -11,74 +11,6 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 from optimum.onnxruntime import ORTModelForSequenceClassification
 
-# ==========================================================
-# 🧩 START DEV MODE CONFIG (Safe Developer Sandbox)
-# ==========================================================
-
-from fastapi import Request
-import json, os
-
-# enable or disable dev mode globally
-DEV_MODE = True
-
-# --- Default immutable parameters ---
-PARAMS_BASE = {
-    # Bias calibration
-    "BIAS_HIGH_THRESHOLD": 0.7,
-    "BIAS_MEDIUM_THRESHOLD": 0.4,
-    "VARIANCE_BIAS_BOOST": 0.1,
-    "EXTREME_POLARITY_BIAS_BOOST": 0.15,
-    "BALANCED_TEXT_REDUCTION": 0.1,
-    "FEEDBACK_MODE_BIAS_SCALE": 0.9,
-    "CONSTRUCTIVE_BIAS_REDUCTION": 0.8,
-
-    # Fairness scoring
-    "HOSTILE_PENALTY": 60,
-    "FAV_PENALTY": 45,
-    "SUBJECTIVE_PENALTY": 30,
-    "NO_CONSTRUCTIVE_PENALTY": 25,
-    "FAIRNESS_SCALE": 1.2,
-    "FAIR_BALANCED_MIN": 85,
-    "FAIR_SLIGHTLY_SKEWED_MIN": 60,
-    "FAIRNESS_BIAS_PENALTY_MED": 10,
-    "FAIRNESS_BIAS_PENALTY_HIGH": 25,
-
-    # Sentiment & tone
-    "POLARITY_SCALE": 0.9,
-    "TONE_VARIANCE_LIMIT": 0.25,
-    "HARSH_POLARITY_THRESHOLD": -0.4,
-    "POSITIVE_POLARITY_THRESHOLD": 0.6,
-
-    # Constructiveness
-    "CONSTRUCTIVE_RATIO_MIN": 0.3,
-    "INCONSISTENT_TONE_VAR": 0.3,
-    "INCONSISTENT_TONE_BIAS_BOOST": 0.15,
-
-    # UI colors
-    "COLOR_FAIR_BALANCED": "hsl(150,70%,40%)",
-    "COLOR_FAIR_SKEWED": "hsl(45,85%,55%)",
-    "COLOR_FAIR_UNBALANCED": "hsl(0,80%,55%)",
-
-    # Tone summary
-    "TONE_POSITIVE_MIN": 0.3,
-    "TONE_NEGATIVE_MAX": -0.3,
-    "BIAS_RATE_HIGH_THRESHOLD": 0.3,
-}
-
-# --- Per-user temporary overrides (sandboxed) ---
-PARAMS_SESSIONS = {}
-
-def get_user_params(request: Request):
-    ip = request.client.host
-    params = PARAMS_BASE.copy()
-    if ip in PARAMS_SESSIONS:
-        params.update(PARAMS_SESSIONS[ip])
-    return params
-
-# ==========================================================
-# 🧩 END DEV MODE CONFIG (Safe Developer Sandbox)
-# ==========================================================
-
 # ---------- setup nltk once ----------
 try:
     nltk.data.find("tokenizers/punkt")
@@ -94,6 +26,177 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+
+# ==========================================================
+# 🧩 START DEV MODE CONFIG (Safe Developer Sandbox)
+# ==========================================================
+
+from fastapi import Request, HTTPException
+import json, os
+
+# === Developer Mode Toggle ===
+DEV_MODE = True  # Set False to disable /dev endpoints globally
+
+# === Immutable Default Parameters ===
+PARAMS_BASE = {
+    # Bias calibration
+    "BIAS_HIGH_THRESHOLD": 0.55,
+    "BIAS_MEDIUM_THRESHOLD": 0.30,
+    "VARIANCE_BIAS_BOOST": 0.05,
+    "EXTREME_POLARITY_BIAS_BOOST": 0.10,
+    "BALANCED_TEXT_REDUCTION": 0.1,
+    "FEEDBACK_MODE_BIAS_SCALE": 0.9,
+    "CONSTRUCTIVE_BIAS_REDUCTION": 0.8,
+
+    # Fairness scoring
+    "HOSTILE_PENALTY": 60,
+    "FAV_PENALTY": 45,
+    "SUBJECTIVE_PENALTY": 30,
+    "NO_CONSTRUCTIVE_PENALTY": 25,
+    "FAIRNESS_SCALE": 1.2,
+    "FAIR_BALANCED_MIN": 70,
+    "FAIR_SLIGHTLY_SKEWED_MIN": 60,
+    "FAIRNESS_BIAS_PENALTY_MED": 0,
+    "FAIRNESS_BIAS_PENALTY_HIGH": 0,
+
+    # Sentiment & tone
+    "POLARITY_SCALE": 0.9,
+    "TONE_VARIANCE_LIMIT": 0.30,
+    "HARSH_POLARITY_THRESHOLD": -0.4,
+    "POSITIVE_POLARITY_THRESHOLD": 0.6,
+
+    # Constructiveness
+    "CONSTRUCTIVE_RATIO_MIN": 0.20,
+    "INCONSISTENT_TONE_VAR": 0.30,
+    "INCONSISTENT_TONE_BIAS_BOOST": 0.15,
+
+    # UI colors
+    "COLOR_FAIR_BALANCED": "#00c36b",
+    "COLOR_FAIR_SKEWED": "#ffb700",
+    "COLOR_FAIR_UNBALANCED": "#ff3838",
+
+    # Tone summary
+    "TONE_POSITIVE_MIN": 0.3,
+    "TONE_NEGATIVE_MAX": -0.3,
+    "BIAS_RATE_HIGH_THRESHOLD": 0.3,
+
+    # --- Developer tuning additions ---
+    "TONE_BASE_HUE": 60,               # hue center for tone color
+    "RULE_BOOST_MULT": 1.0,            # multiplier for rule-based bias boosts
+    "CONSTRUCTIVE_BOOST": 1.0,         # global fairness bias dampening factor
+}
+
+# === Per-user temporary overrides (sandboxed) ===
+PARAMS_SESSIONS = {}
+
+
+# Helper: get the IP key (or a fallback ID)
+def _get_client_id(request: Request):
+    try:
+        return request.client.host
+    except Exception:
+        return "local"
+
+
+# Get merged parameters (base + user overrides)
+def get_user_params(request: Request):
+    ip = _get_client_id(request)
+    params = PARAMS_BASE.copy()
+    if ip in PARAMS_SESSIONS:
+        params.update(PARAMS_SESSIONS[ip])
+    return params
+
+
+# Update or create per-user session params
+def set_user_params(request: Request, new_params: dict):
+    ip = _get_client_id(request)
+    session_params = PARAMS_SESSIONS.get(ip, {}).copy()
+
+    for k, v in new_params.items():
+        if k not in PARAMS_BASE:
+            continue  # ignore unknown keys
+        # Accept both numeric and string values (e.g. color codes)
+        session_params[k] = v
+
+    PARAMS_SESSIONS[ip] = session_params
+
+
+# Reset current user's session
+def reset_user_params(request: Request):
+    ip = _get_client_id(request)
+    if ip in PARAMS_SESSIONS:
+        del PARAMS_SESSIONS[ip]
+
+
+# --- Developer API Endpoints ---
+if DEV_MODE:
+
+    @app.get("/dev/params")
+    def dev_get_params(request: Request):
+        """Return current effective parameters for this user (base + overrides)."""
+        return get_user_params(request)
+
+    @app.post("/dev/params")
+    async def dev_post_params(request: Request):
+        """Update in-memory session parameters (non-persistent)."""
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        set_user_params(request, body)
+        return {"ok": True, "updated": list(body.keys())}
+
+    @app.post("/dev/reset")
+    def dev_reset_params(request: Request):
+        """Clear overrides for this user (back to defaults)."""
+        reset_user_params(request)
+        return {"ok": True}
+    
+
+else:
+    # If DEV_MODE is disabled, return 404 for these
+    @app.get("/dev/{path:path}")
+    def dev_disabled(path: str):
+        raise HTTPException(status_code=404, detail="Developer mode disabled.")
+
+# === Optional: Save & Load Dev Presets (session-safe) ===
+@app.get("/dev/save")
+def dev_save_params(request: Request):
+    """Save current user's parameter session as a JSON preset."""
+    ip = request.client.host
+    params = get_user_params(request)
+    os.makedirs("dev_configs", exist_ok=True)
+    path = f"dev_configs/{ip}.json"
+    with open(path, "w") as f:
+        json.dump(params, f, indent=2)
+    return {"ok": True, "saved_to": path}
+
+@app.post("/dev/load")
+async def dev_load_params(request: Request):
+    """Load a saved JSON preset back into current session."""
+    try:
+        body = await request.json()
+        filename = body.get("filename")
+        if not filename:
+            return {"error": "filename required"}
+    except Exception:
+        return {"error": "Invalid request body"}
+
+    path = f"dev_configs/{filename}"
+    if not os.path.exists(path):
+        return {"error": f"Preset {filename} not found"}
+
+    with open(path) as f:
+        loaded = json.load(f)
+
+    ip = request.client.host
+    PARAMS_SESSIONS[ip] = loaded
+    return {"ok": True, "loaded": filename, "params": loaded}
+
+# ==========================================================
+# 🧩 END DEV MODE CONFIG (Safe Developer Sandbox)
+# ==========================================================
 
 # ---------- load models ----------
 SENTIMENT_MODEL_NAME = "lxyuan/distilbert-base-multilingual-cased-sentiments-student"
@@ -202,80 +305,115 @@ def run_sentiment_model(text: str):
 def calibrate_bias(
     raw_bias_prob: float,
     polarity: float,
-    tone_variance: float = 0.0,
-    constructive_ratio: float = 0.0,
-    context: str = "feedback"
+    tone_variance: float,
+    constructive_ratio: float,
+    context: str,
+    params: dict
 ):
     """
-    Smarter bias adjustment:
-    - Reduces false 'high bias' when tone is consistent or constructive
-    - Allows stronger praise/critique in feedback context
-    - Penalizes erratic tone variance and harsh tone without constructiveness
+    Adjust bias probability using user-tuned parameters.
     """
     bias_adj = raw_bias_prob
 
-    # 1️⃣ Constructive tone = lower bias
-    if abs(polarity) > 0.6 and constructive_ratio > 0.3:
-        bias_adj *= 0.8
+    # 1️⃣ Constructive tone reduces bias
+    if abs(polarity) > params["POSITIVE_POLARITY_THRESHOLD"] and constructive_ratio > params["CONSTRUCTIVE_RATIO_MIN"]:
+        bias_adj *= params.get("CONSTRUCTIVE_BIAS_REDUCTION", 0.8)
 
-    # 2️⃣ Consistent tone = more fair
-    if tone_variance < 0.25:
-        bias_adj *= 0.8
+    # 2️⃣ Consistent tone reduces bias
+    if tone_variance < params["TONE_VARIANCE_LIMIT"]:
+        bias_adj *= params.get("BALANCED_TEXT_REDUCTION", 0.9)
 
-    # 3️⃣ Feedback mode = allow stronger tone range
+    # 3️⃣ Feedback mode scales bias tolerance
     if context == "feedback":
-        bias_adj *= 0.9
+        bias_adj *= params.get("FEEDBACK_MODE_BIAS_SCALE", 0.9)
 
-    # 4️⃣ Harsh + unhelpful tone = increase bias
-    if polarity < -0.4 and constructive_ratio < 0.2:
-        bias_adj = min(1.0, bias_adj * 1.2)
+    # 4️⃣ Harsh + unhelpful tone increases bias
+    if polarity < params["HARSH_POLARITY_THRESHOLD"] and constructive_ratio < params["CONSTRUCTIVE_RATIO_MIN"]:
+        bias_adj = min(1.0, bias_adj * (1 + params.get("VARIANCE_BIAS_BOOST", 0.1)))
 
     return max(0.0, min(1.0, bias_adj))
 
 
-def classify_bias_level(bias_adj: float):
-    if bias_adj >= 0.7:
+def classify_bias_level(bias_adj: float, params: dict):
+    if bias_adj >= params["BIAS_HIGH_THRESHOLD"]:
         return "high"
-    elif bias_adj >= 0.4:
+    elif bias_adj >= params["BIAS_MEDIUM_THRESHOLD"]:
         return "medium"
     else:
         return "low"
 
 
-def compute_fairness_label(polarity: float, bias_level: str):
-    """
-    map (tone,bias) -> fairness label
-    """
-    if bias_level == "high" and abs(polarity) > 0.5:
+def compute_fairness_label(polarity: float, bias_level: str, params: dict):
+    pos_thresh = params.get("POSITIVE_POLARITY_THRESHOLD", 0.6)
+    if bias_level == "high" and abs(polarity) > pos_thresh * 0.8:
         return "unbalanced"
     if bias_level == "high":
         return "slightly skewed"
-    if bias_level == "medium" and abs(polarity) > 0.6:
+    if bias_level == "medium" and abs(polarity) > pos_thresh:
         return "slightly skewed"
     return "balanced"
 
 
-def fairness_color(label: str):
+def fairness_color(label: str, params: dict):
+    """Use dynamic colors from params."""
     if label == "balanced":
-        return "hsl(150,70%,40%)"      # green
+        return params.get("COLOR_FAIR_BALANCED", "hsl(150,70%,40%)")
     if label == "slightly skewed":
-        return "hsl(45,85%,55%)"       # amber
-    return "hsl(0,80%,55%)"            # red
+        return params.get("COLOR_FAIR_SKEWED", "hsl(45,85%,55%)")
+    return params.get("COLOR_FAIR_UNBALANCED", "hsl(0,80%,55%)")
 
-
-def tone_color(polarity: float):
-    # map -1..1 -> red→yellow→green
-    # We'll just reuse same mapping as before: hue 0..120
-    hue = (polarity + 1) * 60.0  # -1=>0(red),0=>60(yellow),1=>120(green)
-    return f"hsl({hue:.0f},80%,50%)"
-
-
-def bias_color(level: str):
+def bias_color(level: str, params: dict):
+    """Use fairness palette dynamically for bias as well (for consistency)."""
     if level == "low":
-        return "hsl(150,70%,40%)"   # green
+        return params.get("COLOR_FAIR_BALANCED", "hsl(150,70%,40%)")
     if level == "medium":
-        return "hsl(45,85%,55%)"    # yellow
-    return "hsl(0,80%,55%)"         # red
+        return params.get("COLOR_FAIR_SKEWED", "hsl(45,85%,55%)")
+    return params.get("COLOR_FAIR_UNBALANCED", "hsl(0,80%,55%)")
+
+
+def compute_fairness_simple(sentences: list[str], params: dict):
+    """
+    Enhanced fairness scoring (Dev Mode aware).
+    Uses dynamic penalties & scaling from current params.
+    """
+    total_penalty = 0
+    triggers = []
+
+    for s in sentences:
+        s_low = s.lower()
+
+        # Harsh / judgmental tone
+        if any(w in s_low for w in HOSTILE_WORDS):
+            total_penalty += params["HOSTILE_PENALTY"]
+            triggers.append("harsh tone")
+        if "!" in s_low or "never" in s_low or "always" in s_low:
+            total_penalty += 25
+            triggers.append("absolutist phrasing")
+
+        # Over-flattering praise
+        if any(w in s_low for w in FAV_WORDS):
+            total_penalty += params["FAV_PENALTY"]
+            triggers.append("over-praise")
+
+        # Subjectivity
+        if any(w in s_low for w in SUBJECTIVE_WORDS):
+            total_penalty += params["SUBJECTIVE_PENALTY"]
+            triggers.append("personal phrasing")
+
+        # Missing constructive advice
+        if not any(w in s_low for w in CONSTRUCTIVE_WORDS):
+            total_penalty += params["NO_CONSTRUCTIVE_PENALTY"]
+            triggers.append("no constructive advice")
+
+        # Very short or vague
+        if len(s.split()) < 5:
+            total_penalty += 15
+            triggers.append("vague comment")
+
+    fairness = 100 - (total_penalty / max(1, len(sentences))) * params["FAIRNESS_SCALE"]
+    fairness = max(0, min(100, fairness))
+
+    return fairness, triggers
 
 import re
 
@@ -298,64 +436,6 @@ def is_balanced_text(text: str):
     t = text.lower()
     hedges = ["however", "although", "while", "on the other hand", "nevertheless", "in contrast", "both", "whereas"]
     return any(h in t for h in hedges)
-
-def compute_fairness_simple(sentences: list[str]):
-    """
-    Enhanced fairness scoring (v3).
-    Now heavily penalizes emotional, subjective, or unconstructive tone.
-    Target distribution: professional text ~90, mild bias ~65, strong bias ~40.
-    """
-    total_penalty = 0
-    triggers = []
-
-    for s in sentences:
-        s_low = s.lower()
-
-        # --- Harsh / judgmental tone ---
-        if any(w in s_low for w in HOSTILE_WORDS):
-            total_penalty += 60
-            triggers.append("harsh tone")
-        if "!" in s_low or "never" in s_low or "always" in s_low:
-            total_penalty += 25
-            triggers.append("absolutist phrasing")
-
-        # --- Over-flattering / exaggerated praise ---
-        if any(w in s_low for w in FAV_WORDS):
-            total_penalty += 45
-            triggers.append("over-praise")
-        if any(x in s_low for x in ["amazing", "incredible", "perfect", "exceptional", "brilliant"]):
-            total_penalty += 35
-            triggers.append("exaggerated praise")
-
-        # --- Subjective or personal language ---
-        if any(w in s_low for w in SUBJECTIVE_WORDS):
-            total_penalty += 30
-            triggers.append("personal phrasing")
-        if "you are " in s_low or "he is " in s_low or "she is " in s_low:
-            total_penalty += 20
-            triggers.append("personal reference")
-
-        # --- Lack of constructive / actionable language ---
-        if not any(w in s_low for w in CONSTRUCTIVE_WORDS):
-            total_penalty += 25
-            triggers.append("no constructive advice")
-
-        # --- Emotional punctuation or sarcasm hints ---
-        if s.count("!") > 1 or "??" in s or "..." in s:
-            total_penalty += 20
-            triggers.append("emotional punctuation")
-
-        # --- Too short or fragmentary feedback (non-specific) ---
-        if len(s.split()) < 5:
-            total_penalty += 15
-            triggers.append("vague comment")
-
-    # --- scale much harder ---
-    # Each strong trigger now cuts ~10–15 fairness points.
-    fairness = 100 - (total_penalty / max(1, len(sentences))) * 1.2
-    fairness = max(0, min(100, fairness))
-
-    return fairness, triggers
 
 def generate_note(tone_label: str, polarity: float, bias_level: str, fairness_label: str, sentence: str = ""):
     fav, host, subj = bias_flavours(sentence)
@@ -450,6 +530,10 @@ def narrative_summary(tone_lbl: str, bias_lvl: str, fairness_lbl: str):
         return "Tone is critical — ensure critique stays specific and actionable."
     return "Mostly acceptable tone. Watch for moments of subjectivity."
 
+def tone_color(polarity: float, params: dict = None):
+    base = params.get("TONE_BASE_HUE", 60)
+    hue = base + (polarity * 60)  # move ±60° from base
+    return f"hsl({hue:.0f},80%,50%)"
 
 # ---------- route ----------
 
@@ -487,10 +571,11 @@ def analyse(req: AnalyseRequest, request: Request):
             polarity,
             tone_variance=0.0,
             constructive_ratio=0.0,
-            context=req.mode
+            context=req.mode,
+            params=params
         )
-        bias_level = classify_bias_level(bias_adj)
-        fair_label = compute_fairness_label(polarity, bias_level)
+        bias_level = classify_bias_level(bias_adj, params)
+        fair_label = compute_fairness_label(polarity, bias_level, params)
         note = generate_note(tone_label, polarity, bias_level, fair_label, s)
 
         per_sentence.append({
@@ -502,9 +587,9 @@ def analyse(req: AnalyseRequest, request: Request):
             "bias_raw": bias_adj,
             "fairness_label": fair_label,
             "note": note,
-            "toneColor": tone_color(polarity),
-            "biasColor": bias_color(bias_level),
-            "fairColor": fairness_color(fair_label),
+            "toneColor": tone_color(polarity, params),
+            "biasColor": bias_color(bias_level, params),
+            "fairColor": fairness_color(fair_label, params),
         })
 
     # ---- aggregate diagnostics ----
@@ -531,6 +616,7 @@ def analyse(req: AnalyseRequest, request: Request):
     if personal_refs: rule_boost += 0.2
     if lack_constructive: rule_boost += 0.15
     if inconsistent_tone: rule_boost += 0.15
+    rule_boost *= params.get("RULE_BOOST_MULT", 1.0)
 
     # ---- combine metrics ----
     bias_rate = compute_bias_rate(bias_lvls)
@@ -560,7 +646,12 @@ def analyse(req: AnalyseRequest, request: Request):
         bias_lvl_overall = "Low"
 
     # ---- fairness ----
-    fairness_index, fairness_triggers = compute_fairness_simple(raw_sentences)
+    fairness_index, fairness_triggers = compute_fairness_simple(raw_sentences, params)
+    
+    # Boost fairness slightly if text is constructive overall
+    if constructive_ratio > params.get("CONSTRUCTIVE_RATIO_MIN", 0.3):
+       fairness_index = min(100, fairness_index * params.get("CONSTRUCTIVE_BOOST", 1.0))
+
 
     # Apply bias–fairness penalty link
     if bias_lvl_overall == "Medium":
@@ -605,8 +696,8 @@ def analyse(req: AnalyseRequest, request: Request):
         inline_highlight.append({
             "text": p["sentence"],
             "toneColor": p["toneColor"],
-            "biasColor": p["biasColor"],
-            "fairColor": p["fairColor"],
+            "biasColor": bias_color(p["bias_class"], params),
+            "fairColor": fairness_color(p["fairness_label"], params),
             "tooltip": " · ".join(tooltip_lines),
         })
 
@@ -619,52 +710,3 @@ def analyse(req: AnalyseRequest, request: Request):
 @app.get("/health")
 def health():
     return {"ok": True}
-
-# ==========================================================
-# 🧩 START DEV MODE ROUTES (Safe Developer Sandbox)
-# ==========================================================
-
-@app.get("/dev/params")
-def get_params(request: Request):
-    if not DEV_MODE:
-        return {"error": "Developer mode disabled"}
-    return get_user_params(request)
-
-@app.post("/dev/params")
-def set_params(request: Request, updates: dict):
-    if not DEV_MODE:
-        return {"error": "Developer mode disabled"}
-    ip = request.client.host
-    PARAMS_SESSIONS.setdefault(ip, {}).update(updates)
-    return {"ok": True, "updated": updates}
-
-@app.post("/dev/reset")
-def reset_params(request: Request):
-    ip = request.client.host
-    PARAMS_SESSIONS.pop(ip, None)
-    return {"ok": True, "msg": "Parameters reset to default"}
-
-@app.get("/dev/save")
-def save_params(request: Request):
-    ip = request.client.host
-    params = get_user_params(request)
-    os.makedirs("dev_configs", exist_ok=True)
-    path = f"dev_configs/{ip}.json"
-    with open(path, "w") as f:
-        json.dump(params, f, indent=2)
-    return {"ok": True, "saved_to": path}
-
-@app.post("/dev/load")
-def load_params(request: Request, filename: str):
-    path = f"dev_configs/{filename}"
-    if not os.path.exists(path):
-        return {"error": "file not found"}
-    with open(path) as f:
-        loaded = json.load(f)
-    ip = request.client.host
-    PARAMS_SESSIONS[ip] = loaded
-    return {"ok": True, "loaded": filename, "params": loaded}
-
-# ==========================================================
-# 🧩 END DEV MODE ROUTES (Safe Developer Sandbox)
-# ==========================================================
