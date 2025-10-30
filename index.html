@@ -1009,7 +1009,7 @@ Results are advisory only — always review flagged feedback manually.
 
     const mode = document.getElementById("modeSelect").value;
 
-    const res = await fetch("http://127.0.0.1:8000/analyse", {
+    const res = await fetch("https://biasbuster-software.onrender.com/analyse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, mode })
