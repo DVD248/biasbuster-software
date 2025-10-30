@@ -11,6 +11,74 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 from optimum.onnxruntime import ORTModelForSequenceClassification
 
+# ==========================================================
+# 🧩 START DEV MODE CONFIG (Safe Developer Sandbox)
+# ==========================================================
+
+from fastapi import Request
+import json, os
+
+# enable or disable dev mode globally
+DEV_MODE = True
+
+# --- Default immutable parameters ---
+PARAMS_BASE = {
+    # Bias calibration
+    "BIAS_HIGH_THRESHOLD": 0.7,
+    "BIAS_MEDIUM_THRESHOLD": 0.4,
+    "VARIANCE_BIAS_BOOST": 0.1,
+    "EXTREME_POLARITY_BIAS_BOOST": 0.15,
+    "BALANCED_TEXT_REDUCTION": 0.1,
+    "FEEDBACK_MODE_BIAS_SCALE": 0.9,
+    "CONSTRUCTIVE_BIAS_REDUCTION": 0.8,
+
+    # Fairness scoring
+    "HOSTILE_PENALTY": 60,
+    "FAV_PENALTY": 45,
+    "SUBJECTIVE_PENALTY": 30,
+    "NO_CONSTRUCTIVE_PENALTY": 25,
+    "FAIRNESS_SCALE": 1.2,
+    "FAIR_BALANCED_MIN": 85,
+    "FAIR_SLIGHTLY_SKEWED_MIN": 60,
+    "FAIRNESS_BIAS_PENALTY_MED": 10,
+    "FAIRNESS_BIAS_PENALTY_HIGH": 25,
+
+    # Sentiment & tone
+    "POLARITY_SCALE": 0.9,
+    "TONE_VARIANCE_LIMIT": 0.25,
+    "HARSH_POLARITY_THRESHOLD": -0.4,
+    "POSITIVE_POLARITY_THRESHOLD": 0.6,
+
+    # Constructiveness
+    "CONSTRUCTIVE_RATIO_MIN": 0.3,
+    "INCONSISTENT_TONE_VAR": 0.3,
+    "INCONSISTENT_TONE_BIAS_BOOST": 0.15,
+
+    # UI colors
+    "COLOR_FAIR_BALANCED": "hsl(150,70%,40%)",
+    "COLOR_FAIR_SKEWED": "hsl(45,85%,55%)",
+    "COLOR_FAIR_UNBALANCED": "hsl(0,80%,55%)",
+
+    # Tone summary
+    "TONE_POSITIVE_MIN": 0.3,
+    "TONE_NEGATIVE_MAX": -0.3,
+    "BIAS_RATE_HIGH_THRESHOLD": 0.3,
+}
+
+# --- Per-user temporary overrides (sandboxed) ---
+PARAMS_SESSIONS = {}
+
+def get_user_params(request: Request):
+    ip = request.client.host
+    params = PARAMS_BASE.copy()
+    if ip in PARAMS_SESSIONS:
+        params.update(PARAMS_SESSIONS[ip])
+    return params
+
+# ==========================================================
+# 🧩 END DEV MODE CONFIG (Safe Developer Sandbox)
+# ==========================================================
+
 # ---------- setup nltk once ----------
 try:
     nltk.data.find("tokenizers/punkt")
@@ -385,8 +453,12 @@ def narrative_summary(tone_lbl: str, bias_lvl: str, fairness_lbl: str):
 
 # ---------- route ----------
 
+from fastapi import Request
+
 @app.post("/analyse", response_model=AnalyseResponse)
-def analyse(req: AnalyseRequest):
+def analyse(req: AnalyseRequest, request: Request):
+    params = get_user_params(request)
+
     text = req.text.strip()
     if not text:
         return AnalyseResponse(
@@ -442,16 +514,16 @@ def analyse(req: AnalyseRequest):
 
     avg_pol = float(np.mean(polarities)) if polarities else 0.0
     tone_var = float(np.std(polarities)) if len(polarities) > 1 else 0.0
-    constructive_words = ["improve", "consider", "suggest", "try", "could", "should", "recommend", "plan", "next", "develop"]
+    constructive_words = ["improve","consider","suggest","try","could","should","recommend","plan","next","develop"]
     constructive_count = sum(any(w in s.lower() for w in constructive_words) for s in raw_sentences)
     constructive_ratio = constructive_count / len(raw_sentences) if raw_sentences else 0.0
 
     # ---- heuristic rule boost ----
-    excessive_praise = any(w in text_lower for w in ["outstanding", "perfect", "best", "amazing", "flawless", "incredible"])
-    harsh_words = any(w in text_lower for w in ["lazy", "poor", "nonsense", "terrible", "awful", "disappointing"])
-    personal_refs = any(w in text_lower for w in ["i think", "i feel", "i believe", "i don't", "my opinion", "to me"])
-    lack_constructive = constructive_ratio < 0.2
-    inconsistent_tone = tone_var > 0.3
+    excessive_praise = any(w in text_lower for w in ["outstanding","perfect","best","amazing","flawless","incredible"])
+    harsh_words = any(w in text_lower for w in ["lazy","poor","nonsense","terrible","awful","disappointing"])
+    personal_refs = any(w in text_lower for w in ["i think","i feel","i believe","i don't","my opinion","to me"])
+    lack_constructive = constructive_ratio < params["CONSTRUCTIVE_RATIO_MIN"]
+    inconsistent_tone = tone_var > params["INCONSISTENT_TONE_VAR"]
 
     rule_boost = 0.0
     if excessive_praise: rule_boost += 0.25
@@ -462,58 +534,55 @@ def analyse(req: AnalyseRequest):
 
     # ---- combine metrics ----
     bias_rate = compute_bias_rate(bias_lvls)
-    base_bias_score = np.mean([
-        0.2 if b == "low" else 0.5 if b == "medium" else 0.8
-        for b in bias_lvls
-    ]) if bias_lvls else 0.0
-
+    base_bias_score = np.mean([0.2 if b=="low" else 0.5 if b=="medium" else 0.8 for b in bias_lvls]) if bias_lvls else 0.0
     bias_final = min(1.0, base_bias_score + rule_boost)
 
-    # 🔹 boost bias when tone variance is high (emotional / inconsistent language)
-    if tone_var > 0.3 and abs(avg_pol) > 0.4:
+    # 🔹 boost bias when tone variance is high (emotional or inconsistent language)
+    if tone_var > params["TONE_VARIANCE_LIMIT"] and abs(avg_pol) > params["POSITIVE_POLARITY_THRESHOLD"]:
+        bias_final = min(1.0, bias_final + params["VARIANCE_BIAS_BOOST"])
+
+    # 🔹 detect extreme bias patterns
+    if abs(avg_pol) > params["POSITIVE_POLARITY_THRESHOLD"]:
+        bias_final = min(1.0, bias_final + params["EXTREME_POLARITY_BIAS_BOOST"])
+    elif "!" in text or "clearly" in text.lower() or "obvious" in text.lower():
         bias_final = min(1.0, bias_final + 0.05)
 
-    # 🔹 detect extreme bias patterns (very cheerlead-y or very harsh, or absolutist language)
-    if abs(avg_pol) > 0.65:
-        bias_final = min(1.0, bias_final + 0.1)
-    if "!" in text or "clearly" in text_lower or "obvious" in text_lower:
-        bias_final = min(1.0, bias_final + 0.05)
-
-    # 🔹 de-boost if the writer shows hedging / balance language
+    # 🔹 balance correction
     if is_balanced_text(text):
-        bias_final = max(0.0, bias_final - 0.1)
+        bias_final = max(0.0, bias_final - params["BALANCED_TEXT_REDUCTION"])
 
-    # map bias_final -> label
-    if bias_final >= 0.55:
+    # ---- classify overall bias ----
+    if bias_final >= params["BIAS_HIGH_THRESHOLD"]:
         bias_lvl_overall = "High"
-    elif bias_final >= 0.3:
+    elif bias_final >= params["BIAS_MEDIUM_THRESHOLD"]:
         bias_lvl_overall = "Medium"
     else:
         bias_lvl_overall = "Low"
 
-    # ---- fairness scoring (using the STRONGER version you defined above) ----
+    # ---- fairness ----
     fairness_index, fairness_triggers = compute_fairness_simple(raw_sentences)
 
-    # classify fairness more honestly (harsher thresholds)
+    # Apply bias–fairness penalty link
+    if bias_lvl_overall == "Medium":
+        fairness_index -= params["FAIRNESS_BIAS_PENALTY_MED"]
+    elif bias_lvl_overall == "High":
+        fairness_index -= params["FAIRNESS_BIAS_PENALTY_HIGH"]
+    fairness_index = max(0, min(100, fairness_index))
+
     fair_label_overall = (
-        "Balanced" if fairness_index >= 70 else
-        "Slightly Skewed" if fairness_index >= 50 else
+        "Balanced" if fairness_index >= params["FAIR_BALANCED_MIN"] else
+        "Slightly Skewed" if fairness_index >= params["FAIR_SLIGHTLY_SKEWED_MIN"] else
         "Unbalanced"
     )
 
-    # ---- tone label for summary ----
     tone_lbl_overall = overall_tone_label(avg_pol)
+    triggers_text = ", ".join(sorted(set(fairness_triggers))) or "no major issues"
+    summary_text = (
+        f"Overall {fair_label_overall.lower()} feedback — flagged for {triggers_text}."
+        if fairness_triggers else
+        "Feedback appears professional and balanced."
+    )
 
-    # human summary text
-    if fairness_triggers:
-        triggers_text = ", ".join(sorted(set(fairness_triggers)))
-        summary_text = (
-            f"Overall {fair_label_overall.lower()} feedback — flagged for {triggers_text}."
-        )
-    else:
-        summary_text = "Feedback appears professional and balanced."
-
-    # ---- build summary block for UI ----
     summary_block = {
         "overall_tone": tone_lbl_overall,
         "avg_polarity": avg_pol,
@@ -541,7 +610,6 @@ def analyse(req: AnalyseRequest):
             "tooltip": " · ".join(tooltip_lines),
         })
 
-    # ---- final response ----
     return {
         "inline_highlight": inline_highlight,
         "sentences": [SentenceReport(**p) for p in per_sentence],
@@ -551,3 +619,52 @@ def analyse(req: AnalyseRequest):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+# ==========================================================
+# 🧩 START DEV MODE ROUTES (Safe Developer Sandbox)
+# ==========================================================
+
+@app.get("/dev/params")
+def get_params(request: Request):
+    if not DEV_MODE:
+        return {"error": "Developer mode disabled"}
+    return get_user_params(request)
+
+@app.post("/dev/params")
+def set_params(request: Request, updates: dict):
+    if not DEV_MODE:
+        return {"error": "Developer mode disabled"}
+    ip = request.client.host
+    PARAMS_SESSIONS.setdefault(ip, {}).update(updates)
+    return {"ok": True, "updated": updates}
+
+@app.post("/dev/reset")
+def reset_params(request: Request):
+    ip = request.client.host
+    PARAMS_SESSIONS.pop(ip, None)
+    return {"ok": True, "msg": "Parameters reset to default"}
+
+@app.get("/dev/save")
+def save_params(request: Request):
+    ip = request.client.host
+    params = get_user_params(request)
+    os.makedirs("dev_configs", exist_ok=True)
+    path = f"dev_configs/{ip}.json"
+    with open(path, "w") as f:
+        json.dump(params, f, indent=2)
+    return {"ok": True, "saved_to": path}
+
+@app.post("/dev/load")
+def load_params(request: Request, filename: str):
+    path = f"dev_configs/{filename}"
+    if not os.path.exists(path):
+        return {"error": "file not found"}
+    with open(path) as f:
+        loaded = json.load(f)
+    ip = request.client.host
+    PARAMS_SESSIONS[ip] = loaded
+    return {"ok": True, "loaded": filename, "params": loaded}
+
+# ==========================================================
+# 🧩 END DEV MODE ROUTES (Safe Developer Sandbox)
+# ==========================================================
