@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+transformers
+torch
+optimum
+onnxruntime
+pydantic
+nltk
+numpy
