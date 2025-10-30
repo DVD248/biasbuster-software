@@ -1,9 +1,11 @@
 fastapi
 uvicorn
 transformers
-torch
-optimum
+torch==2.2.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+optimum[onnxruntime]
 onnxruntime
 pydantic
 nltk
 numpy
+huggingface-hub
