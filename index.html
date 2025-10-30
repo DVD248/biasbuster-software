@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>BiasBuster 2.2 • Tone · Bias · Balance</title>
+<style>
+  :root {
+    --bg-page: #0f172a;
+    --bg-card: #1e253a;
+    --bg-inner: #0f172a;
+    --border-card: rgba(255,255,255,0.07);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-dim: #64748b;
+    --radius-lg: 1rem;
+    --radius-md: .75rem;
+    --radius-sm: .5rem;
+    --tone-positive: hsl(140,70%,40%);
+    --tone-neutral: hsl(45,85%,55%);
+    --tone-negative: hsl(0,80%,55%);
+    --bias-low: hsl(150,70%,40%);
+    --bias-medium: hsl(45,85%,55%);
+    --bias-high: hsl(0,80%,55%);
+    --fair-good: hsl(150,70%,40%);
+    --fair-warn: hsl(45,85%,55%);
+    --fair-bad: hsl(0,80%,55%);
+    --shadow-card: 0 30px 80px rgba(0,0,0,.6);
+    --shadow-pop: 0 30px 80px rgba(0,0,0,.85);
+    --accent-btn-start: #4ade80;
+    --accent-btn-end: #166534;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 2rem;
+    display: grid;
+    place-items: start center;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 1100px;
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 .5rem 0;
+  }
+
+  .subhead {
+    font-size: .8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin: 0 0 1rem 0;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-card);
+    box-shadow: var(--shadow-card);
+    padding: 1rem 1.25rem;
+  }
+
+  label {
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: .5rem;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 160px;
+    background: var(--bg-inner);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255,255,255,.1);
+    padding: .75rem 1rem;
+    line-height: 1.4;
+    font-size: .9rem;
+    resize: vertical;
+  }
+
+  textarea:focus {
+    outline: 2px solid #38bdf8;
+    border-color: transparent;
+  }
+
+  button {
+    all: unset;
+    cursor: pointer;
+    background: radial-gradient(circle at 20% 20%, var(--accent-btn-start) 0%, var(--accent-btn-end) 60%);
+    color: #ecfdf5;
+    font-weight: 600;
+    font-size: .9rem;
+    padding: .6rem 1rem;
+    border-radius: var(--radius-md);
+    box-shadow: 0 20px 40px rgba(16,185,129,.4);
+    display: inline-block;
+    margin-top: .75rem;
+    text-align: center;
+  }
+
+  button:active {
+    transform: scale(.98);
+  }
+
+  /* SUMMARY SECTION */
+
+  .summaryGrid {
+    display: grid;
+    gap: 1rem;
+  }
+
+  @media(min-width:768px){
+    .summaryGrid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .summaryCardInner {
+    background: var(--bg-inner);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-card);
+    padding: .75rem 1rem;
+    line-height: 1.5;
+    font-size: .85rem;
+  }
+
+  .summaryRow {
+    display: flex;
+    flex-wrap: wrap;
+    font-size: .8rem;
+    margin-bottom: .5rem;
+    gap: .5rem 1rem;
+  }
+
+  .badgeGroup {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
+
+  .badgeLabel {
+    color: var(--text-secondary);
+    font-size: .7rem;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+
+  .badgeValue {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: var(--radius-md);
+    padding: .4rem .6rem;
+  }
+
+  .dot {
+    width: .6rem;
+    height: .6rem;
+    border-radius: .4rem;
+    flex-shrink: 0;
+  }
+
+  .toneDotPositive { background: var(--tone-positive); }
+  .toneDotNeutral  { background: var(--tone-neutral); }
+  .toneDotNegative { background: var(--tone-negative); }
+
+  .biasDotLow     { background: var(--bias-low); }
+  .biasDotMedium  { background: var(--bias-medium); }
+  .biasDotHigh    { background: var(--bias-high); }
+
+  .fairDotGood    { background: var(--fair-good); }
+  .fairDotWarn    { background: var(--fair-warn); }
+  .fairDotBad     { background: var(--fair-bad); }
+
+  .whatMeansTitle {
+    font-size: .7rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 0 0 .25rem 0;
+  }
+
+  .whatMeansBody {
+    font-size: .8rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  /* INLINE HIGHLIGHT VIEW */
+
+  .inlineWrapper {
+    background: var(--bg-inner);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-card);
+    padding: 1rem;
+    min-height: 120px;
+    line-height: 1.6;
+    font-size: .9rem;
+    position: relative;
+    color: var(--text-primary);
+  }
+
+  .hintRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem 1rem;
+    margin-top: .75rem;
+    font-size: .7rem;
+    color: var(--text-secondary);
+  }
+
+  .hintItem {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+
+  .hintSwatch {
+    width: .75rem;
+    height: .75rem;
+    border-radius: .3rem;
+    border: 1px solid rgba(0,0,0,.4);
+  }
+
+  /* span with tooltip */
+
+  .hlSentence {
+    position: relative;
+    border-radius: .4rem;
+    padding: .15rem .25rem;
+    cursor: default;
+    transition: box-shadow .15s;
+    color: #0f172a;
+    font-weight: 500;
+  }
+
+  .hlSentence:hover {
+    box-shadow: 0 0 0 2px rgba(255,255,255,.4), 0 15px 40px rgba(0,0,0,.8);
+    z-index: 5;
+  }
+
+  .tooltip {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 4px);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: .7rem;
+    line-height: 1.4;
+    padding: .5rem .6rem;
+    border-radius: .5rem;
+    min-width: 190px;
+    max-width: 240px;
+    box-shadow: var(--shadow-pop);
+    border: 1px solid rgba(255,255,255,.1);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .12s;
+    z-index: 10;
+  }
+
+  .hlSentence:hover .tooltip {
+    opacity: 1;
+  }
+
+  /* TABLE */
+
+  .tableWrapper {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-card);
+    background: var(--bg-inner);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 700px;
+    font-size: .75rem;
+    color: var(--text-primary);
+  }
+
+  thead th {
+    background: var(--bg-card);
+    font-weight: 600;
+    text-align: left;
+    color: var(--text-secondary);
+    padding: .6rem .75rem;
+    border-bottom: 1px solid var(--border-card);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: .6rem .75rem;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+    vertical-align: top;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .tdSentence {
+    color: var(--text-primary);
+    max-width: 350px;
+    line-height: 1.4;
+  }
+
+  .labelPill {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    border-radius: .4rem;
+    padding: .25rem .4rem;
+    font-size: .7rem;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,.15);
+    color: #0f172a;
+    line-height: 1.2;
+  }
+
+  /* we will inline background color from JS */
+
+  .noteText {
+    font-size: .7rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+
+  /* helper small text */
+  .dim {
+    color: var(--text-secondary);
+    font-size: .7rem;
+    line-height: 1.4;
+  }
+
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- INPUT CARD -->
+  <label for="modeSelect">Mode</label>
+<select id="modeSelect">
+  <option value="feedback" selected>Feedback Mode (assessor)</option>
+  <option value="essay">Essay Mode (student)</option>
+</select>
+<div class="card">
+    <h1>BiasBuster 2.2 • Tone · Bias · Balance</h1>
+    <p class="subhead">
+      <br/><br/><em style="color:#94a3b8;font-size:.75rem;">
+Results are advisory only — always review flagged feedback manually.
+</em>
+      Paste assessor comments or essay text. We’ll highlight:<br/>
+      • Tone (positive / neutral / critical)<br/>
+      • Bias (low / medium / high)<br/>
+      • Balance (is feedback professional?)
+    </p>
+
+    <label for="inputText">Input text</label>
+    <textarea id="inputText" placeholder="Paste text here..."></textarea>
+
+    <button id="runBtn">Run BiasBuster Analysis</button>
+  </div>
+
+  <!-- SUMMARY + INLINE VIEW -->
+  <div class="summaryGrid">
+
+    <!-- SUMMARY CARD -->
+    <div class="card">
+      <label>Summary Overview</label>
+      <div class="summaryCardInner" id="summaryBox">
+        <div class="summaryRow">
+          <div class="badgeGroup">
+            <div class="badgeLabel">Overall Tone</div>
+            <div class="badgeValue" id="toneBadge">
+              <span class="dot toneDotNeutral" id="toneDot"></span>
+              <span id="overallToneTxt">—</span>
+              <span style="color:var(--text-secondary);font-weight:400;">(<span id="avgPolarityTxt">avg polarity: —</span>)</span>
+            </div>
+          </div>
+
+          <div class="badgeGroup">
+            <div class="badgeLabel">Bias Level</div>
+            <div class="badgeValue" id="biasBadge">
+              <span class="dot biasDotMedium" id="biasDot"></span>
+              <span id="biasLevelTxt">—</span>
+              <span style="color:var(--text-secondary);font-weight:400;">(<span id="biasRateTxt">bias rate: —</span>)</span>
+            </div>
+          </div>
+
+          <div class="badgeGroup">
+            <div class="badgeLabel">Balance / Fairness</div>
+            <div class="badgeValue" id="fairBadge">
+              <span class="dot fairDotWarn" id="fairDot"></span>
+              <span id="fairnessTxt">—</span>
+              <span style="color:var(--text-secondary);font-weight:400;">(<span id="fairIdxTxt">fairness: —</span>)</span>
+            </div>
+          </div>
+        </div>
+        
+
+        <div>
+          <p class="whatMeansTitle">What this means</p>
+          <p class="whatMeansBody" id="meaningTxt">—</p>
+        </div>
+      </div>
+    </div>
+
+  
+
+    <!-- INLINE HIGHLIGHT CARD -->
+    <div class="card">
+      <label>Inline Highlight (preview)</label>
+      <div id="inlineBox" class="inlineWrapper">
+        <div class="dim">(no analysis yet)</div>
+      </div>
+
+      <div class="hintRow">
+        <div class="hintItem">
+          <span class="hintSwatch" style="background:hsl(140,70%,40%);"></span>
+          <span>Supportive / balanced</span>
+        </div>
+        <div class="hintItem">
+          <span class="hintSwatch" style="background:hsl(45,85%,55%);"></span>
+          <span>Watch wording</span>
+        </div>
+        <div class="hintItem">
+          <span class="hintSwatch" style="background:hsl(0,80%,55%);"></span>
+          <span>May feel unfair / personal</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TABLE CARD -->
+  <div class="card">
+    <label>Sentence View</label>
+    <p class="dim" style="margin-top:0;">
+      Tone = emotional stance. Bias = subjective or unfair framing. Balance = how professional and student-safe it sounds.
+    </p>
+    <div class="tableWrapper">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:2rem;">#</th>
+            <th style="min-width:260px;">Sentence</th>
+            <th>Tone</th>
+            <th>Bias</th>
+            <th>Balance</th>
+            <th style="min-width:180px;">Note</th>
+          </tr>
+        </thead>
+        <tbody id="sentTableBody">
+          <tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:1rem;">(no data yet)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const runBtn = document.getElementById("runBtn");
+  const inputText = document.getElementById("inputText");
+  const inlineBox = document.getElementById("inlineBox");
+  const sentTableBody = document.getElementById("sentTableBody");
+
+  // summary elements
+  const overallToneTxt = document.getElementById("overallToneTxt");
+  const avgPolarityTxt = document.getElementById("avgPolarityTxt");
+  const biasLevelTxt = document.getElementById("biasLevelTxt");
+  const biasRateTxt = document.getElementById("biasRateTxt");
+  const fairnessTxt = document.getElementById("fairnessTxt");
+  const fairIdxTxt = document.getElementById("fairIdxTxt");
+  const meaningTxt = document.getElementById("meaningTxt");
+  const toneDot = document.getElementById("toneDot");
+  const biasDot = document.getElementById("biasDot");
+  const fairDot = document.getElementById("fairDot");
+
+  function setToneDot(overallTone){
+    toneDot.className = "dot " + (
+      overallTone === "Positive" ? "toneDotPositive" :
+      overallTone === "Negative" ? "toneDotNegative" :
+      "toneDotNeutral"
+    );
+  }
+
+  function setBiasDot(biasLevel){
+    const lvl = biasLevel.toLowerCase();
+    biasDot.className = "dot " + (
+      lvl === "high" ? "biasDotHigh" :
+      lvl === "medium" ? "biasDotMedium" :
+      "biasDotLow"
+    );
+  }
+
+  function setFairDot(fairnessOverall){
+    const f = fairnessOverall.toLowerCase();
+    fairDot.className = "dot " + (
+      f === "balanced" ? "fairDotGood" :
+      f === "slightly skewed" ? "fairDotWarn" :
+      "fairDotBad"
+    );
+  }
+
+  function escapeHtml(str){
+    return str
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;");
+  }
+
+  function renderSummary(summary){
+    if(!summary){
+      overallToneTxt.textContent = "—";
+      avgPolarityTxt.textContent = "avg polarity: —";
+      biasLevelTxt.textContent = "—";
+      biasRateTxt.textContent = "bias rate: —";
+      fairnessTxt.textContent = "—";
+      fairIdxTxt.textContent = "fairness: —";
+      meaningTxt.textContent = "—";
+      setToneDot("Neutral");
+      setBiasDot("Low");
+      setFairDot("Balanced");
+      return;
+    }
+
+    overallToneTxt.textContent = summary.overall_tone || "—";
+    avgPolarityTxt.textContent = `avg polarity: ${summary.avg_polarity !== undefined ? summary.avg_polarity.toFixed(2) : "—"}`;
+    biasLevelTxt.textContent = summary.avg_bias_level || "—";
+    biasRateTxt.textContent = `bias rate: ${summary.bias_rate !== undefined ? summary.bias_rate + "%" : "—"}`;
+    fairnessTxt.textContent = summary.fairness_overall || "—";
+    fairIdxTxt.textContent = `fairness: ${summary.fairness_index !== undefined ? summary.fairness_index + "%" : "—"}`;
+    meaningTxt.textContent = summary.what_this_means || "—";
+    setToneDot(summary.overall_tone || "Neutral");
+    setBiasDot(summary.avg_bias_level || "Low");
+    setFairDot(summary.fairness_overall || "Balanced");
+  }
+
+  function renderInline(inlineArr){
+    if(!inlineArr || !inlineArr.length){
+      inlineBox.innerHTML = `<div class="dim">(no analysis yet)</div>`;
+      return;
+    }
+
+    function pickColor(item){
+      if(item.fairColor) return item.fairColor;
+      if(item.biasColor) return item.biasColor;
+      return item.toneColor || "hsl(45,85%,55%)";
+    }
+
+    const spans = inlineArr.map(seg => {
+      const safe = escapeHtml(seg.text);
+      const bg = pickColor(seg);
+      const tooltipHtml = escapeHtml(seg.tooltip || "");
+      return `
+        <span class="hlSentence" style="background:${bg};">
+          ${safe}
+          <span class="tooltip">${tooltipHtml}</span>
+        </span>
+      `;
+    });
+
+    inlineBox.innerHTML = spans.join(" ");
+  }
+
+  function renderTable(sentences){
+    if(!sentences || !sentences.length){
+      sentTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:1rem;">(no data yet)</td></tr>`;
+      return;
+    }
+
+    sentTableBody.innerHTML = sentences.map((s, idx) => {
+      const toneBg = s.toneColor || "hsl(45,85%,55%)";
+      const biasBg = s.biasColor || "hsl(45,85%,55%)";
+      const fairBg = s.fairColor || "hsl(45,85%,55%)";
+      const safeSentence = escapeHtml(s.sentence);
+      const safeNote = escapeHtml(s.note || "");
+      return `
+        <tr>
+          <td>${idx+1}</td>
+          <td class="tdSentence">${safeSentence}</td>
+          <td><span class="labelPill" style="background:${toneBg};">${escapeHtml(s.tone_label || "")}</span></td>
+          <td><span class="labelPill" style="background:${biasBg};">${escapeHtml(s.bias_class || "")}</span></td>
+          <td><span class="labelPill" style="background:${fairBg};">${escapeHtml(s.fairness_label || "")}</span></td>
+          <td><div class="noteText">${safeNote}</div></td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  async function runAnalysis(){
+    const text = inputText.value.trim();
+    if(!text){
+      alert("Please paste some text first 🙏");
+      return;
+    }
+
+    const mode = document.getElementById("modeSelect").value;
+
+    const res = await fetch("http://127.0.0.1:8000/analyse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, mode })
+    });
+
+    if(!res.ok){
+      alert("API error");
+      return;
+    }
+
+    const data = await res.json();
+    renderSummary(data.summary);
+    renderInline(data.inline_highlight);
+    renderTable(data.sentences);
+  }
+
+  runBtn.addEventListener("click", runAnalysis);
+</script>
+</body>
+</html>
