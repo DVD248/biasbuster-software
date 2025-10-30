@@ -356,6 +356,395 @@
 
 </style>
 </head>
+<!-- === Secret BiasBuster Developer Panel === -->
+<!-- === BiasBuster Lab Mode (Dev Panel) START === -->
+<div id="dev-tools" style="
+  display:none; position:fixed; bottom:25px; right:25px;
+  background:#1e1e1e; color:#eee; padding:20px; border-radius:16px;
+  box-shadow:0 4px 16px rgba(0,0,0,0.6); z-index:9999; width:360px;
+  font-family:system-ui, sans-serif; font-size:13px; max-height:90vh; overflow-y:auto;
+">
+  <h3 style="margin:0 0 12px; font-size:15px; display:flex;align-items:center;justify-content:space-between;">
+    <span>🧩 BiasBuster Lab Mode</span>
+    <button id="close-dev" style="background:#333;border:0;border-radius:6px;color:#aaa;font-size:11px;padding:4px 6px;cursor:pointer;">✕</button>
+  </h3>
+
+  <!-- Preset row -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+    <label style="flex:1 1 auto;">Preset:
+      <select id="preset-select" style="width:100%;margin-top:4px;background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:6px;padding:4px 6px;font-size:12px;">
+        <option value="custom">Custom</option>
+        <option value="lenient">Lenient</option>
+        <option value="balanced" selected>Balanced</option>
+        <option value="strict">Strict</option>
+      </select>
+    </label>
+  </div>
+
+  <!-- Save / Load preset row -->
+  <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:12px;">
+    <button id="save-preset-btn" style="flex:1;background:#444;border:0;border-radius:6px;color:#fff;font-size:12px;padding:6px 8px;cursor:pointer;">
+      ⬇ Save Preset
+    </button>
+    <button id="load-preset-file-btn" style="flex:1;background:#444;border:0;border-radius:6px;color:#fff;font-size:12px;padding:6px 8px;cursor:pointer;">
+      ⬆ Load Preset
+    </button>
+    <!-- hidden file input for loading -->
+    <input id="preset-file-input" type="file" accept="application/json" style="display:none;">
+  </div>
+
+  <hr style="border-color:#444;margin:10px 0;">
+
+  <!-- SCORING -->
+  <h4 style="margin:8px 0;">🎚 Scoring Sensitivity</h4>
+
+  <label style="display:block;margin-bottom:8px;">
+    Bias High Threshold
+    <input id="bias-high" type="range" min="0" max="1" step="0.01" style="width:100%">
+    <span id="bias-high-val"></span>
+  </label>
+
+  <label style="display:block;margin-bottom:8px;">
+    Fair Balanced Min (%)
+    <input id="fair-balanced" type="range" min="50" max="100" step="1" style="width:100%">
+    <span id="fair-balanced-val"></span>
+  </label>
+
+  <label style="display:block;margin-bottom:8px;">
+    Hostile Penalty
+    <input id="hostile-penalty" type="range" min="0" max="100" step="5" style="width:100%">
+    <span id="hostile-penalty-val"></span>
+  </label>
+
+  <label style="display:block;margin-bottom:8px;">
+    Favouritism Penalty
+    <input id="fav-penalty" type="range" min="0" max="100" step="5" style="width:100%">
+    <span id="fav-penalty-val"></span>
+  </label>
+
+  <label style="display:block;margin-bottom:8px;">
+    Subjectivity Penalty
+    <input id="subj-penalty" type="range" min="0" max="100" step="5" style="width:100%">
+    <span id="subj-penalty-val"></span>
+  </label>
+
+  <label style="display:block;margin-bottom:8px;">
+    Constructive Boost
+    <input id="constructive-boost" type="range" min="0" max="1" step="0.05" style="width:100%">
+    <span id="constructive-boost-val"></span>
+  </label>
+
+  <hr style="border-color:#444;margin:10px 0;">
+
+  <!-- TONE -->
+  <h4 style="margin:8px 0;">🧠 Tone & Fairness Dynamics</h4>
+
+  <label style="display:block;margin-bottom:8px;">
+    Tone Variance Limit
+    <input id="tone-var" type="range" min="0" max="1" step="0.05" style="width:100%">
+    <span id="tone-var-val"></span>
+  </label>
+
+  <label style="display:block;margin-bottom:8px;">
+    Extreme Tone Boost
+    <input id="tone-extreme" type="range" min="0" max="0.3" step="0.01" style="width:100%">
+    <span id="tone-extreme-val"></span>
+  </label>
+
+  <label style="display:block;margin-bottom:8px;">
+    Rule Boost Multiplier
+    <input id="rule-boost" type="range" min="0" max="1" step="0.05" style="width:100%">
+    <span id="rule-boost-val"></span>
+  </label>
+
+  <hr style="border-color:#444;margin:10px 0;">
+
+  <!-- COLORS -->
+  <h4 style="margin:8px 0;">🎨 Color Mapping</h4>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <span>Bias - Low</span>
+    <input id="color-bias-low" type="color" value="#00c36b" style="border:0;background:none;">
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <span>Bias - Medium</span>
+    <input id="color-bias-med" type="color" value="#ffb700" style="border:0;background:none;">
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <span>Bias - High</span>
+    <input id="color-bias-high" type="color" value="#ff3838" style="border:0;background:none;">
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <span>Fair - Balanced</span>
+    <input id="color-fair-good" type="color" value="#00c36b" style="border:0;background:none;">
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <span>Fair - Slightly Skewed</span>
+    <input id="color-fair-mid" type="color" value="#ffb700" style="border:0;background:none;">
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <span>Fair - Unbalanced</span>
+    <input id="color-fair-bad" type="color" value="#ff3838" style="border:0;background:none;">
+  </div>
+
+  <label style="display:block;margin-bottom:8px;">
+    Tone Base Hue (0-120)
+    <input id="tone-base-hue" type="range" min="0" max="120" step="5" style="width:100%">
+    <span id="tone-base-hue-val"></span>
+  </label>
+
+  <hr style="border-color:#444;margin:10px 0;">
+
+  <!-- bottom row -->
+  <div style="display:flex;justify-content:space-between;gap:8px;">
+    <button id="load-btn" style="flex:1;background:#444;border:0;border-radius:6px;color:#fff;font-size:12px;padding:6px 8px;cursor:pointer;">
+      Refresh
+    </button>
+    <button id="reset-btn" style="flex:1;background:#444;border:0;border-radius:6px;color:#fff;font-size:12px;padding:6px 8px;cursor:pointer;">
+      Reset
+    </button>
+  </div>
+</div>
+
+<script>
+let devVisible = false;
+let secretCount = 0;
+const devPanel = document.getElementById("dev-tools");
+
+// Map panel controls -> actual backend parameter keys
+// Map panel controls -> actual backend parameter keys
+const paramElems = {
+  // --- Bias calibration ---
+  "BIAS_HIGH_THRESHOLD": "bias-high",
+  "FAIR_BALANCED_MIN": "fair-balanced",
+  "HOSTILE_PENALTY": "hostile-penalty",
+  "FAV_PENALTY": "fav-penalty",
+  "SUBJECTIVE_PENALTY": "subj-penalty",
+
+  // --- Constructive / fairness ---
+  "CONSTRUCTIVE_BOOST": "constructive-boost",
+
+  // --- Tone & bias ---
+  "TONE_VARIANCE_LIMIT": "tone-var",
+  "EXTREME_POLARITY_BIAS_BOOST": "tone-extreme",
+  "RULE_BOOST_MULT": "rule-boost",
+
+  // --- Color mapping ---
+  "COLOR_FAIR_BALANCED": "color-fair-good",
+  "COLOR_FAIR_SKEWED": "color-fair-mid",
+  "COLOR_FAIR_UNBALANCED": "color-fair-bad",
+
+  // --- Tone color hue ---
+  "TONE_BASE_HUE": "tone-base-hue"
+};
+
+// helper: read current UI control values
+function getParamsFromUI() {
+  const out = {};
+  for (const [key, id] of Object.entries(paramElems)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    out[key] = (el.type === 'color') ? el.value : parseFloat(el.value);
+  }
+  return out;
+}
+
+// =============== SECRET TOGGLE ===============
+// Show panel when Shift+D pressed 3x in a row
+document.addEventListener("keydown", (e) => {
+  if (e.shiftKey && e.key.toLowerCase() === "d") {
+    secretCount++;
+    if (secretCount >= 3) {
+      devVisible = !devVisible;
+      devPanel.style.display = devVisible ? "block" : "none";
+      secretCount = 0;
+      if (devVisible) loadParams();
+    }
+  } else {
+    secretCount = 0;
+  }
+});
+
+// close button
+document.getElementById("close-dev").onclick = () => {
+  devVisible = false;
+  devPanel.style.display = "none";
+};
+
+// =============== TALK TO BACKEND ===============
+
+// fetch current active session params (not defaults)
+async function loadParams() {
+  const res = await fetch("http://127.0.0.1:8000/dev/params");
+  const params = await res.json();
+  for (const [key, id] of Object.entries(paramElems)) {
+    const elem = document.getElementById(id);
+    if (!elem) continue;
+    const val = params[key];
+    if (val === undefined) continue;
+    if (elem.type === "color") {
+      elem.value = val;
+    } else {
+      elem.value = val;
+      const display = document.getElementById(id + "-val");
+      if (display) display.textContent = val;
+    }
+  }
+}
+
+// push whatever is currently in the sliders / pickers up to backend session
+async function applyParams() {
+  const updates = getParamsFromUI();
+  await fetch("http://127.0.0.1:8000/dev/params", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  console.log("✅ Params updated:", updates);
+
+  // 🔁 Auto re-run analysis if text exists
+  const t = document.getElementById("inputText");
+  if (t && t.value.trim()) {
+    await runAnalysis(); // your existing analysis function
+  }
+}
+
+
+// ask backend to wipe this user's session back to server defaults
+async function resetParams() {
+  await fetch("http://127.0.0.1:8000/dev/reset", { method: "POST" });
+  await loadParams();
+  alert("All tuning reset to server defaults (only for you).");
+}
+
+// =============== PRESETS (Lenient / Balanced / Strict) ===============
+async function applyPreset(preset) {
+  const presets = {
+    lenient: {
+      BIAS_HIGH_THRESHOLD:0.65, FAIR_BALANCED_MIN:80,
+      HOSTILE_PENALTY:30, FAV_PENALTY:20, SUBJ_PENALTY:15,
+      CONSTRUCTIVE_BOOST:0.8,
+      TONE_VARIANCE_LIMIT:0.4, EXTREME_POLARITY_BIAS_BOOST:0.05, RULE_BOOST_MULT:0.4
+    },
+    balanced:{
+      BIAS_HIGH_THRESHOLD:0.55, FAIR_BALANCED_MIN:85,
+      HOSTILE_PENALTY:50, FAV_PENALTY:35, SUBJ_PENALTY:20,
+      CONSTRUCTIVE_BOOST:0.6,
+      TONE_VARIANCE_LIMIT:0.3, EXTREME_POLARITY_BIAS_BOOST:0.1, RULE_BOOST_MULT:0.5
+    },
+    strict:  {
+      BIAS_HIGH_THRESHOLD:0.45, FAIR_BALANCED_MIN:90,
+      HOSTILE_PENALTY:70, FAV_PENALTY:55, SUBJ_PENALTY:35,
+      CONSTRUCTIVE_BOOST:0.5,
+      TONE_VARIANCE_LIMIT:0.25, EXTREME_POLARITY_BIAS_BOOST:0.15, RULE_BOOST_MULT:0.7
+    }
+  };
+  const p = presets[preset];
+  if (!p) return;
+
+  for (const [key,val] of Object.entries(p)) {
+    const id = paramElems[key];
+    if (!id) continue;
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.value = val;
+    const disp = document.getElementById(id + "-val");
+    if (disp) disp.textContent = val;
+  }
+
+  // also reflect preset dropdown visually
+  document.getElementById("preset-select").value = preset;
+
+  await applyParams();
+}
+
+// =============== SAVE PRESET TO FILE ===============
+// grab live panel values -> build JSON -> trigger browser download
+function downloadPresetJSON() {
+  const data = {};
+  for (const [key, id] of Object.entries(paramElems)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    data[key] = (el.type === "color") ? el.value : parseFloat(el.value);
+  }
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const stamp = new Date().toISOString().replace(/[:.]/g,"-");
+  a.download = `biasbuster-preset-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// =============== LOAD PRESET FROM FILE ===============
+// open file picker -> read json -> apply to sliders -> push to backend
+function promptLoadPresetFile() {
+  document.getElementById("preset-file-input").click();
+}
+
+document.getElementById("preset-file-input").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  let loaded;
+  try {
+    loaded = JSON.parse(text);
+  } catch (err) {
+    alert("Not a valid preset file.");
+    return;
+  }
+
+  // apply loaded values into UI
+  for (const [key,val] of Object.entries(loaded)) {
+    const id = paramElems[key];
+    if (!id) continue;
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.value = val;
+    const disp = document.getElementById(id + "-val");
+    if (disp) disp.textContent = val;
+  }
+
+  // mark dropdown as "custom"
+  document.getElementById("preset-select").value = "custom";
+
+  // push to backend session
+  await applyParams();
+  alert("Preset loaded into your session.");
+});
+
+// =============== WIRE UP EVENTS ===============
+document.getElementById("load-btn").onclick = loadParams;
+document.getElementById("reset-btn").onclick = resetParams;
+document.getElementById("preset-select").onchange = (e)=>applyPreset(e.target.value);
+
+document.getElementById("save-preset-btn").onclick = downloadPresetJSON;
+document.getElementById("load-preset-file-btn").onclick = promptLoadPresetFile;
+
+// live-update backend when sliders/colors move
+for (const [key, id] of Object.entries(paramElems)) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener("input", async ()=>{
+  const disp = document.getElementById(id + "-val");
+  if (disp) disp.textContent = el.value;
+  document.getElementById("preset-select").value = "custom";
+  await applyParams();
+  { const t = document.getElementById("inputText"); if (t && t.value.trim()) runAnalysis(); }
+  });
+}
+</script>
+<!-- === BiasBuster Lab Mode (Dev Panel) END === -->
+
 <body>
 <div class="app">
 
@@ -620,7 +1009,7 @@ Results are advisory only — always review flagged feedback manually.
 
     const mode = document.getElementById("modeSelect").value;
 
-    const res = await fetch("https://biasbuster-software.onrender.com/analyse", {
+    const res = await fetch("http://127.0.0.1:8000/analyse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, mode })
