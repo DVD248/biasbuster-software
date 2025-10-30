@@ -1,8 +1,7 @@
 fastapi
 uvicorn
 transformers
-torch==2.5.1+cpu
---extra-index-url https://download.pytorch.org/whl/cpu
+torch
 optimum[onnxruntime]
 onnxruntime
 pydantic
